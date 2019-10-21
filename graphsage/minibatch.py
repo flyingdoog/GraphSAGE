@@ -1,6 +1,6 @@
 from __future__ import division
 from __future__ import print_function
-
+import random
 import numpy as np
 
 np.random.seed(123)
@@ -10,88 +10,69 @@ class EdgeMinibatchIterator(object):
     """ This minibatch iterator iterates over batches of sampled edges or
     random pairs of co-occuring edges.
 
-    G -- networkx graph
+    adj_list -- list: id to nbs
     placeholders -- tensorflow placeholders object
     context_pairs -- if not none, then a list of co-occuring node pairs (from random walks)
     batch_size -- size of the minibatches
     max_degree -- maximum size of the downsampled adjacency lists
     """
-    def __init__(self, G, 
-            placeholders, context_pairs=None, batch_size=100, max_degree=25,
+    def __init__(self, adj_list, 
+            placeholders, context_pairs=None, batch_size=100, max_degree=25, val_ratio = 0.5,
             **kwargs):
 
-        self.G = G
-        self.nodes = G.nodes()
-        self.node_size = len(self.nodes)
+        self.adj_list = adj_list.tocoo()
+        self.node_size = adj_list.shape[0]
         self.placeholders = placeholders
         self.batch_size = batch_size
         self.max_degree = max_degree
         self.batch_num = 0
 
-        self.nodes = np.random.permutation(G.nodes())
+        self.nodes = np.random.permutation(np.arange(self.node_size))#
+
+        self.all_edges, _, _ = self.split_edges()
+
         self.adj, self.deg = self.construct_adj()
-        self.test_adj = self.construct_test_adj()
-        edges = G.edges()
-        self.train_edges = self.edges = np.random.permutation(edges)
-        
-        self.train_edges = self._remove_isolated(self.train_edges)
-        self.val_edges = [e for e in G.edges() if G[e[0]][e[1]]['train_removed']]
+        print('minibach done')
+        # self.test_adj = self.construct_test_adj() unimplemented.
 
-        print(len([n for n in G.nodes() if not G.node[n]['test'] and not G.node[n]['val']]), 'train nodes')
-        print(len([n for n in G.nodes() if G.node[n]['test'] or G.node[n]['val']]), 'test nodes')
-        self.val_set_size = len(self.val_edges)
 
-    def _n2v_prune(self, edges):
-        is_val = lambda n : self.G.node[n]["val"] or self.G.node[n]["test"]
-        return [e for e in edges if not is_val(e[1])]
+    def split_edges(self, val_ratio=0.6):
+        edges = []
+        train_edges = []
+        val_edges = []
 
-    def _remove_isolated(self, edge_list):
-        new_edge_list = []
-        missing = 0
-        for n1, n2 in edge_list:
-            if not n1 in self.G.node or not n2 in self.G.node:
-                missing += 1
-                continue
-            if (self.deg[n1] == 0 or self.deg[n2] == 0) \
-                    and (not self.G.node[n1]['test'] or self.G.node[n1]['val']) \
-                    and (not self.G.node[n2]['test'] or self.G.node[n2]['val']):
-                continue
+        for index in range(self.adj_list.nnz):
+            edge = (self.adj_list.row[index],self.adj_list.col[index])
+            edges.append(edge)
+            if random.random() < val_ratio:
+                val_edges.append(edge)
             else:
-                new_edge_list.append((n1,n2))
-        print("Unexpected missing:", missing)
-        return new_edge_list
+                train_edges.append(edge)
+        return edges, train_edges, val_edges
 
     def construct_adj(self):
         adj = self.node_size*np.ones((self.node_size+1, self.max_degree))
         deg = np.zeros((self.node_size,))
 
-        for nodeid in self.G.nodes():
-            if self.G.node[nodeid]['test'] or self.G.node[nodeid]['val']:
+        neighbors = []
+        for nodeid in range(self.node_size):
+            neighbors.append([])
+
+        for edge in self.all_edges:
+            neighbors[edge[0]].append(edge[1])
+
+        for nodeid in range(self.node_size):
+            nbs = neighbors[nodeid]
+            deg[nodeid] = len(nbs)
+            if len(nbs) == 0:
                 continue
-            neighbors = np.array([neighbor for neighbor in self.G.neighbors(nodeid)
-                if (not self.G[nodeid][neighbor]['train_removed'])])
-            deg[nodeid] = len(neighbors)
-            if len(neighbors) == 0:
-                continue
-            if len(neighbors) > self.max_degree:
-                neighbors = np.random.choice(neighbors, self.max_degree, replace=False)
-            elif len(neighbors) < self.max_degree:
-                neighbors = np.random.choice(neighbors, self.max_degree, replace=True)
-            adj[nodeid, :] = neighbors
+            if len(nbs) > self.max_degree:
+                nbs = np.random.choice(nbs, self.max_degree, replace=False)
+            elif len(nbs) < self.max_degree:
+                nbs = np.random.choice(nbs, self.max_degree, replace=True)
+            adj[nodeid, :] = nbs
         return adj, deg
 
-    def construct_test_adj(self):
-        adj = self.node_size*np.ones((self.node_size+1, self.max_degree))
-        for nodeid in self.G.nodes():
-            neighbors = np.array([neighbor for neighbor in self.G.neighbors(nodeid)])
-            if len(neighbors) == 0:
-                continue
-            if len(neighbors) > self.max_degree:
-                neighbors = np.random.choice(neighbors, self.max_degree, replace=False)
-            elif len(neighbors) < self.max_degree:
-                neighbors = np.random.choice(neighbors, self.max_degree, replace=True)
-            adj[nodeid, :] = neighbors
-        return adj
 
     def end(self):
         return self.batch_num * self.batch_size >= len(self.train_edges)
@@ -120,44 +101,19 @@ class EdgeMinibatchIterator(object):
     def num_training_batches(self):
         return len(self.train_edges) // self.batch_size + 1
 
-    def val_feed_dict(self, size=None):
-        edge_list = self.val_edges
-        if size is None:
-            return self.batch_feed_dict(edge_list)
-        else:
-            ind = np.random.permutation(len(edge_list))
-            val_edges = [edge_list[i] for i in ind[:min(size, len(ind))]]
-            return self.batch_feed_dict(val_edges)
-
-    def incremental_val_feed_dict(self, size, iter_num):
-        edge_list = self.val_edges
-        val_edges = edge_list[iter_num*size:min((iter_num+1)*size, 
-            len(edge_list))]
-        return self.batch_feed_dict(val_edges), (iter_num+1)*size >= len(self.val_edges), val_edges
-
     def incremental_embed_feed_dict(self, size, iter_num):
-        node_list = self.nodes
+        node_list = np.arange(self.node_size)
         val_nodes = node_list[iter_num*size:min((iter_num+1)*size, 
             len(node_list))]
         val_edges = [(n,n) for n in val_nodes]
         return self.batch_feed_dict(val_edges), (iter_num+1)*size >= len(node_list), val_edges
 
-    def label_val(self):
-        train_edges = []
-        val_edges = []
-        for n1, n2 in self.G.edges():
-            if (self.G.node[n1]['val'] or self.G.node[n1]['test'] 
-                    or self.G.node[n2]['val'] or self.G.node[n2]['test']):
-                val_edges.append((n1,n2))
-            else:
-                train_edges.append((n1,n2))
-        return train_edges, val_edges
 
     def shuffle(self):
         """ Re-shuffle the training set.
             Also reset the batch number.
         """
-        self.train_edges = np.random.permutation(self.train_edges)
+        self.train_edges = np.random.permutation(self.all_edges)
         self.nodes = np.random.permutation(self.nodes)
         self.batch_num = 0
 
@@ -166,20 +122,20 @@ class NodeMinibatchIterator(object):
     """ 
     This minibatch iterator iterates over nodes for supervised learning.
 
-    G -- networkx graph
+    adj_list -- networkx adj_list
     placeholders -- standard tensorflow placeholders object for feeding
     label_map -- map from node ids to class values (integer or list)
     num_classes -- number of output classes
     batch_size -- size of the minibatches
     max_degree -- maximum size of the downsampled adjacency lists
     """
-    def __init__(self, G, 
+    def __init__(self, adj_list, 
             placeholders, label_map, num_classes, 
             batch_size=100, max_degree=25,
             **kwargs):
 
-        self.G = G
-        self.nodes = G.nodes()
+        self.adj_list = adj_list
+        self.nodes = adj_list.nodes()
         self.node_size = len(self.nodes)        
         self.placeholders = placeholders
         self.batch_size = batch_size
@@ -191,11 +147,11 @@ class NodeMinibatchIterator(object):
         self.adj, self.deg = self.construct_adj()
         self.test_adj = self.construct_test_adj()
 
-        self.val_nodes = [n for n in self.G.nodes() if self.G.node[n]['val']]
-        self.test_nodes = [n for n in self.G.nodes() if self.G.node[n]['test']]
+        self.val_nodes = [n for n in self.adj_list.nodes() if self.adj_list.node[n]['val']]
+        self.test_nodes = [n for n in self.adj_list.nodes() if self.adj_list.node[n]['test']]
 
         self.no_train_nodes_set = set(self.val_nodes + self.test_nodes)
-        self.train_nodes = set(G.nodes()).difference(self.no_train_nodes_set)
+        self.train_nodes = set(adj_list.nodes()).difference(self.no_train_nodes_set)
         # don't train on nodes that only have edges to test set
         self.train_nodes = [n for n in self.train_nodes if self.deg[n] > 0]
 
@@ -213,11 +169,11 @@ class NodeMinibatchIterator(object):
         adj = self.node_size*np.ones((self.node_size+1, self.max_degree))
         deg = np.zeros((self.node_size,))
 
-        for nodeid in self.G.nodes():
-            if self.G.node[nodeid]['test'] or self.G.node[nodeid]['val']:
+        for nodeid in self.adj_list.nodes():
+            if self.adj_list.node[nodeid]['test'] or self.adj_list.node[nodeid]['val']:
                 continue
-            neighbors = np.array([neighbor for neighbor in self.G.neighbors(nodeid)
-                if (not self.G[nodeid][neighbor]['train_removed'])])
+            neighbors = np.array([neighbor for neighbor in self.adj_list.neighbors(nodeid)
+                if (not self.adj_list[nodeid][neighbor]['train_removed'])])
             deg[nodeid] = len(neighbors)
             if len(neighbors) == 0:
                 continue
@@ -230,9 +186,9 @@ class NodeMinibatchIterator(object):
 
     def construct_test_adj(self):
         adj = self.node_size*np.ones((self.node_size+1, self.max_degree))
-        for nodeid in self.G.nodes():
+        for nodeid in self.adj_list.nodes():
             neighbors = np.array([neighbor 
-                for neighbor in self.G.neighbors(nodeid)])
+                for neighbor in self.adj_list.neighbors(nodeid)])
             if len(neighbors) == 0:
                 continue
             if len(neighbors) > self.max_degree:
