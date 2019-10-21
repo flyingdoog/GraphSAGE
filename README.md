@@ -2,4 +2,5 @@
 
 ### Revise
 * Remove Id_map
-* Transductive Only
+* Read Data from GCN form
+* Unsupervised Learning. remove val etc.
