@@ -4,7 +4,9 @@
 * Remove Id_map
 * Read Data from GCN form
 * Unsupervised Learning. remove val etc.
-* For supervised Version.
-  ** support 'task_type=semi' and 'task_type=full'. For cora, with 'semi', we use 140 nodes for trainning (splitted by GCN paper). With 'full' we use all left nodes, apart from validation and testing, for trainning.
-  ** currently, I do not tuning the hyper-parameters.
-  
+
+
+### Supervised Version.
+*support 'task_type=semi' and 'task_type=full'. For cora, with 'semi', we use 140 nodes for trainning (splitted by GCN paper). With 'full' we use all left nodes, apart from validation and testing, for trainning.
+* currently, I do not tuning the hyper-parameters.
+* Upload 'cora' and 'citeseer' datasets.
