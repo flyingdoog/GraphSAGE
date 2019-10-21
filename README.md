@@ -1,4 +1,9 @@
-## GraphSage: Representation Learning on Large Graphs
+## Tensorflow Version: GraphSage: Representation Learning on Large Graphs
+
+
+### Enviroments
+* Tensorflow 1.13
+* Python 3.7
 
 ### Revise
 * Remove Id_map
