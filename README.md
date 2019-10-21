@@ -2,3 +2,4 @@
 
 ### Revise
 * Remove Id_map
+* Transductive Only
