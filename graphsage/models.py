@@ -3,11 +3,11 @@ from collections import namedtuple
 import tensorflow as tf
 import math
 
-import graphsage.layers as layers
-import graphsage.metrics as metrics
+import layers as layers
+import metrics as metrics
 
-from .prediction import BipartiteEdgePredLayer
-from .aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator, SeqAggregator, GCNAggregator
+from prediction import BipartiteEdgePredLayer
+from aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator, SeqAggregator, GCNAggregator
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS

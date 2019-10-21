@@ -8,11 +8,11 @@ import numpy as np
 import sklearn
 from sklearn import metrics
 
-from graphsage.supervised_models import SupervisedGraphsage
-from graphsage.models import SAGEInfo
-from graphsage.minibatch import NodeMinibatchIterator
-from graphsage.neigh_samplers import UniformNeighborSampler
-from graphsage.utils import load_data
+from supervised_models import SupervisedGraphsage
+from models import SAGEInfo
+from minibatch import NodeMinibatchIterator
+from neigh_samplers import UniformNeighborSampler
+from utils import load_data
 
 os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 
@@ -31,7 +31,7 @@ tf.app.flags.DEFINE_boolean('log_device_placement', False,
 flags.DEFINE_string('model', 'graphsage_mean', 'model names. See README for possible values.')  
 flags.DEFINE_float('learning_rate', 0.01, 'initial learning rate.')
 flags.DEFINE_string("model_size", "small", "Can be big or small; model specific def'ns")
-flags.DEFINE_string('train_prefix', '', 'prefix identifying training data. must be specified.')
+flags.DEFINE_string('train_prefix', '../example_data/toy-ppi', 'prefix identifying training data. must be specified.')
 
 # left to default values in main experiments 
 flags.DEFINE_integer('epochs', 10, 'number of epochs to train.')
@@ -45,7 +45,7 @@ flags.DEFINE_integer('dim_1', 128, 'Size of output dim (final is 2x this, if usi
 flags.DEFINE_integer('dim_2', 128, 'Size of output dim (final is 2x this, if using concat)')
 flags.DEFINE_boolean('random_context', True, 'Whether to use random context or direct edges')
 flags.DEFINE_integer('batch_size', 512, 'minibatch size.')
-flags.DEFINE_boolean('sigmoid', False, 'whether to use sigmoid loss')
+flags.DEFINE_boolean('sigmoid', True, 'whether to use sigmoid loss')
 flags.DEFINE_integer('identity_dim', 0, 'Set to positive value to use identity embedding features of that dimension. Default 0.')
 
 #logging, saving, validation settings etc.
@@ -123,8 +123,7 @@ def train(train_data, test_data=None):
 
     G = train_data[0]
     features = train_data[1]
-    id_map = train_data[2]
-    class_map  = train_data[4]
+    class_map  = train_data[2]
     if isinstance(list(class_map.values())[0], list):
         num_classes = len(list(class_map.values())[0])
     else:
@@ -134,16 +133,13 @@ def train(train_data, test_data=None):
         # pad with dummy zero vector
         features = np.vstack([features, np.zeros((features.shape[1],))])
 
-    context_pairs = train_data[3] if FLAGS.random_context else None
     placeholders = construct_placeholders(num_classes)
     minibatch = NodeMinibatchIterator(G, 
-            id_map,
             placeholders, 
             class_map,
             num_classes,
             batch_size=FLAGS.batch_size,
-            max_degree=FLAGS.max_degree, 
-            context_pairs = context_pairs)
+            max_degree=FLAGS.max_degree)
     adj_info_ph = tf.placeholder(tf.int32, shape=minibatch.adj.shape)
     adj_info = tf.Variable(adj_info_ph, trainable=False, name="adj_info")
 

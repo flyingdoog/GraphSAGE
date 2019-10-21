@@ -1,8 +1,8 @@
 import tensorflow as tf
 
-import graphsage.models as models
-import graphsage.layers as layers
-from graphsage.aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator, SeqAggregator, GCNAggregator
+import models as models
+import layers as layers
+from aggregators import MeanAggregator, MaxPoolingAggregator, MeanPoolingAggregator, SeqAggregator, GCNAggregator
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
